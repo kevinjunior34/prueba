@@ -1,6 +1,10 @@
 import { supabase } from "./supabase";
 import { asignarTecnicoAuto } from "./Tecnico";
 
+// ──────────────────────────────────────────────
+//  Bot mejorado con Claude AI (Anthropic API)
+// ──────────────────────────────────────────────
+
 const SYSTEM_PROMPT = `Eres un asistente técnico virtual del hospital. Tu trabajo es ayudar al personal hospitalario a resolver problemas técnicos con equipos médicos y sistemas informáticos.
 
 EQUIPOS QUE MANEJAS:
@@ -26,11 +30,23 @@ INSTRUCCIONES:
 9. Sé BREVE. Máximo 4-5 líneas por respuesta.
 10. NUNCA inventes especificaciones técnicas que no conoces.`;
 
+// ── Llamada a la API de Claude ──
 async function llamarClaude(mensajes) {
   try {
+    const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
+
+    if (!apiKey) {
+      console.error("❌ VITE_ANTHROPIC_API_KEY no está definida en .env");
+      return null;
+    }
+
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,                    // ← FIX: autenticación
+        "anthropic-version": "2023-06-01"       // ← FIX: versión requerida
+      },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
         max_tokens: 1000,
@@ -39,20 +55,27 @@ async function llamarClaude(mensajes) {
       })
     });
 
-    if (!response.ok) throw new Error(`API error: ${response.status}`);
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("❌ Error API Claude:", errorData); // ver error exacto en consola
+      return null;
+    }
+
     const data = await response.json();
     return data.content?.[0]?.text || null;
+
   } catch (error) {
-    console.error("Error llamando a Claude:", error);
+    console.error("❌ Error llamando a Claude:", error);
     return null;
   }
 }
 
+// ── Sesión del bot ──
 class SesionBot {
   constructor(ticketId, ticketTitulo, ticketDescripcion, usuarioId) {
     this.ticketId = ticketId;
     this.ticketTitulo = ticketTitulo;
-    this.ticketDescripcion = ticketDescripcion; // ← nuevo
+    this.ticketDescripcion = ticketDescripcion; // ← descripción del ticket
     this.usuarioId = usuarioId;
     this.intentos = 0;
     this.maxIntentos = 3;
@@ -62,14 +85,14 @@ class SesionBot {
     this.activo = true;
   }
 
-  // ── Ahora lee el ticket y responde automáticamente ──
+  // ── Lee el ticket y responde automáticamente al crearse ──
   async iniciar() {
     const contenidoTicket = `
       Título del ticket: ${this.ticketTitulo}
       Descripción: ${this.ticketDescripcion}
     `.trim();
 
-    // Le pasamos el contenido del ticket como si fuera el primer mensaje del usuario
+    // El contenido del ticket se inyecta como primer mensaje del usuario
     this.historialChat.push({ role: "user", content: contenidoTicket });
 
     const respuestaClaude = await llamarClaude(this.historialChat);
@@ -149,8 +172,12 @@ class SesionBot {
     this.activo = false;
     await supabase
       .from("tickets")
-      .update({ resuelto_por_bot: true, fecha_resolucion_bot: new Date().toISOString() })
+      .update({
+        resuelto_por_bot: true,
+        fecha_resolucion_bot: new Date().toISOString()
+      })
       .eq("id_ticket", this.ticketId);
+
     const msgs = [
       "✅ ¡Perfecto! Me alegra que se haya resuelto. Que tengas un excelente día.",
       "✅ ¡Qué bien! Problema solucionado. Quedo a tus órdenes.",
@@ -165,6 +192,7 @@ class SesionBot {
     this.escalado = true;
     this.activo = false;
     const tecnico = await asignarTecnicoAuto(this.ticketId);
+
     await supabase
       .from("tickets")
       .update({
@@ -176,7 +204,10 @@ class SesionBot {
       })
       .eq("id_ticket", this.ticketId);
 
-    let respuesta = mensajePrevio ? mensajePrevio + "\n\n" : "⚠️ **No pude resolver el problema de forma automática.**\n\n";
+    let respuesta = mensajePrevio
+      ? mensajePrevio + "\n\n"
+      : "⚠️ **No pude resolver el problema de forma automática.**\n\n";
+
     respuesta += tecnico
       ? `✅ He asignado a **${tecnico.nombre}** como técnico especializado.\n\nTe contactará a la brevedad para asistirte personalmente.`
       : "⚠️ No hay técnicos disponibles en este momento. Un supervisor será notificado.";
@@ -186,8 +217,14 @@ class SesionBot {
   }
 
   estaActivo() { return this.activo; }
+
   getEstado() {
-    return { activo: this.activo, resuelto: this.resuelto, escalado: this.escalado, intentos: this.intentos };
+    return {
+      activo: this.activo,
+      resuelto: this.resuelto,
+      escalado: this.escalado,
+      intentos: this.intentos
+    };
   }
 
   async guardarMensaje(tipo, contenido) {
@@ -207,10 +244,12 @@ class SesionBot {
 class BotHospital {
   constructor() { this.sesiones = new Map(); }
 
-  // ── Ahora recibe también la descripción del ticket ──
   getSesion(ticketId, ticketTitulo = "", ticketDescripcion = "", usuarioId = null) {
     if (!this.sesiones.has(ticketId)) {
-      this.sesiones.set(ticketId, new SesionBot(ticketId, ticketTitulo, ticketDescripcion, usuarioId));
+      this.sesiones.set(
+        ticketId,
+        new SesionBot(ticketId, ticketTitulo, ticketDescripcion, usuarioId)
+      );
     }
     return this.sesiones.get(ticketId);
   }
@@ -219,3 +258,10 @@ class BotHospital {
 }
 
 export const botHospital = new BotHospital();
+```
+
+---
+
+Y asegúrate de tener en tu `.env`:
+```
+VITE_ANTHROPIC_API_KEY=sk-ant-api03
