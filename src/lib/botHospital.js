@@ -1,10 +1,6 @@
 import { supabase } from "./supabase";
 import { asignarTecnicoAuto } from "./Tecnico";
 
-// ──────────────────────────────────────────────
-//  Bot mejorado con Claude AI (Anthropic API)
-// ──────────────────────────────────────────────
-
 const SYSTEM_PROMPT = `Eres un asistente técnico virtual del hospital. Tu trabajo es ayudar al personal hospitalario a resolver problemas técnicos con equipos médicos y sistemas informáticos.
 
 EQUIPOS QUE MANEJAS:
@@ -30,7 +26,6 @@ INSTRUCCIONES:
 9. Sé BREVE. Máximo 4-5 líneas por respuesta.
 10. NUNCA inventes especificaciones técnicas que no conoces.`;
 
-// ── Llamada a la API de Claude ──
 async function llamarClaude(mensajes) {
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -53,11 +48,11 @@ async function llamarClaude(mensajes) {
   }
 }
 
-// ── Sesión del bot ──
 class SesionBot {
-  constructor(ticketId, ticketTitulo, usuarioId) {
+  constructor(ticketId, ticketTitulo, ticketDescripcion, usuarioId) {
     this.ticketId = ticketId;
     this.ticketTitulo = ticketTitulo;
+    this.ticketDescripcion = ticketDescripcion; // ← nuevo
     this.usuarioId = usuarioId;
     this.intentos = 0;
     this.maxIntentos = 3;
@@ -67,10 +62,27 @@ class SesionBot {
     this.activo = true;
   }
 
+  // ── Ahora lee el ticket y responde automáticamente ──
   async iniciar() {
-    const mensaje = `🏥 **Asistente Virtual del Hospital**\n\nHola, soy el asistente técnico virtual. ¿En qué puedo ayudarte?\n\nDescribe el problema o el equipo que presenta fallas y te guiaré paso a paso.`;
-    await this.guardarMensaje("bot", mensaje);
-    return mensaje;
+    const contenidoTicket = `
+      Título del ticket: ${this.ticketTitulo}
+      Descripción: ${this.ticketDescripcion}
+    `.trim();
+
+    // Le pasamos el contenido del ticket como si fuera el primer mensaje del usuario
+    this.historialChat.push({ role: "user", content: contenidoTicket });
+
+    const respuestaClaude = await llamarClaude(this.historialChat);
+
+    if (!respuestaClaude) {
+      const fallback = "⚠️ Hola, recibí tu ticket. Estoy teniendo dificultades para procesarlo. ¿Podrías darme más detalles del problema?";
+      await this.guardarMensaje("bot", fallback);
+      return fallback;
+    }
+
+    this.historialChat.push({ role: "assistant", content: respuestaClaude });
+    await this.guardarMensaje("bot", respuestaClaude);
+    return respuestaClaude;
   }
 
   async procesarMensaje(mensajeUsuario) {
@@ -81,7 +93,7 @@ class SesionBot {
     const mensajeNorm = mensajeUsuario.trim();
     await this.guardarMensaje("usuario", mensajeNorm);
 
-    if (this.historialChat.length > 0 && this._esResuelto(mensajeNorm)) {
+    if (this._esResuelto(mensajeNorm)) {
       return this._cerrarResuelto();
     }
 
@@ -115,12 +127,16 @@ class SesionBot {
 
   _esResuelto(msg) {
     const m = msg.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    return ["si", "sí", "funciono", "funcionó", "ok", "listo", "resuelto", "gracias"].some(p => m === p || m.startsWith(p + " ") || m.endsWith(" " + p));
+    return ["si", "sí", "funciono", "funcionó", "ok", "listo", "resuelto", "gracias"].some(
+      p => m === p || m.startsWith(p + " ") || m.endsWith(" " + p)
+    );
   }
 
   _esNegativo(msg) {
     const m = msg.toLowerCase();
-    return ["no", "nope", "tampoco", "nada", "sigue", "igual"].some(p => m === p || m.startsWith(p + " "));
+    return ["no", "nope", "tampoco", "nada", "sigue", "igual"].some(
+      p => m === p || m.startsWith(p + " ")
+    );
   }
 
   _debeEscalar(respuesta) {
@@ -131,8 +147,15 @@ class SesionBot {
   async _cerrarResuelto() {
     this.resuelto = true;
     this.activo = false;
-    await supabase.from("tickets").update({ resuelto_por_bot: true, fecha_resolucion_bot: new Date().toISOString() }).eq("id_ticket", this.ticketId);
-    const msgs = ["✅ ¡Perfecto! Me alegra que se haya resuelto. Que tengas un excelente día.", "✅ ¡Qué bien! Problema solucionado. Quedo a tus órdenes.", "✅ El ticket quedará cerrado como resuelto. ¡Hasta pronto!"];
+    await supabase
+      .from("tickets")
+      .update({ resuelto_por_bot: true, fecha_resolucion_bot: new Date().toISOString() })
+      .eq("id_ticket", this.ticketId);
+    const msgs = [
+      "✅ ¡Perfecto! Me alegra que se haya resuelto. Que tengas un excelente día.",
+      "✅ ¡Qué bien! Problema solucionado. Quedo a tus órdenes.",
+      "✅ El ticket quedará cerrado como resuelto. ¡Hasta pronto!"
+    ];
     const respuesta = msgs[Math.floor(Math.random() * msgs.length)];
     await this.guardarMensaje("bot", respuesta);
     return respuesta;
@@ -142,21 +165,30 @@ class SesionBot {
     this.escalado = true;
     this.activo = false;
     const tecnico = await asignarTecnicoAuto(this.ticketId);
-    await supabase.from("tickets").update({ diagnostico_bot: { intentos: this.intentos, escalado: true, historial_resumido: this.historialChat.slice(-4) } }).eq("id_ticket", this.ticketId);
+    await supabase
+      .from("tickets")
+      .update({
+        diagnostico_bot: {
+          intentos: this.intentos,
+          escalado: true,
+          historial_resumido: this.historialChat.slice(-4)
+        }
+      })
+      .eq("id_ticket", this.ticketId);
 
     let respuesta = mensajePrevio ? mensajePrevio + "\n\n" : "⚠️ **No pude resolver el problema de forma automática.**\n\n";
-    if (tecnico) {
-      respuesta += `✅ He asignado a **${tecnico.nombre}** como técnico especializado.\n\nTe contactará a la brevedad para asistirte personalmente.`;
-    } else {
-      respuesta += "⚠️ No hay técnicos disponibles en este momento. Un supervisor será notificado.";
-    }
+    respuesta += tecnico
+      ? `✅ He asignado a **${tecnico.nombre}** como técnico especializado.\n\nTe contactará a la brevedad para asistirte personalmente.`
+      : "⚠️ No hay técnicos disponibles en este momento. Un supervisor será notificado.";
 
     await this.guardarMensaje("bot", respuesta);
     return respuesta;
   }
 
   estaActivo() { return this.activo; }
-  getEstado() { return { activo: this.activo, resuelto: this.resuelto, escalado: this.escalado, intentos: this.intentos }; }
+  getEstado() {
+    return { activo: this.activo, resuelto: this.resuelto, escalado: this.escalado, intentos: this.intentos };
+  }
 
   async guardarMensaje(tipo, contenido) {
     try {
@@ -174,10 +206,15 @@ class SesionBot {
 
 class BotHospital {
   constructor() { this.sesiones = new Map(); }
-  getSesion(ticketId, ticketTitulo = "", usuarioId = null) {
-    if (!this.sesiones.has(ticketId)) this.sesiones.set(ticketId, new SesionBot(ticketId, ticketTitulo, usuarioId));
+
+  // ── Ahora recibe también la descripción del ticket ──
+  getSesion(ticketId, ticketTitulo = "", ticketDescripcion = "", usuarioId = null) {
+    if (!this.sesiones.has(ticketId)) {
+      this.sesiones.set(ticketId, new SesionBot(ticketId, ticketTitulo, ticketDescripcion, usuarioId));
+    }
     return this.sesiones.get(ticketId);
   }
+
   cerrarSesion(ticketId) { this.sesiones.delete(ticketId); }
 }
 
