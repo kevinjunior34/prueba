@@ -1,33 +1,32 @@
 import { supabase } from "./supabase.js";
-
-// Respuestas predefinidas
-const respuestasAuto = {
-  bienvenida: "Hola, hemos recibido tu ticket. Un técnico te atenderá a la brevedad.",
-  asignado: (nombre) => `Tu ticket ha sido asignado a ${nombre}.`,
-  cerrado: "Tu ticket ha sido cerrado. Gracias por usar nuestro sistema."
-};
+import { botHospital } from "./botHospital.js";
 
 export async function enviarAutoRespuesta(ticket, areaNombre, onHistorialUpdate) {
   try {
-    // 1. Registrar en el historial
+    const sesion = botHospital.getSesion(
+      ticket.id_ticket,
+      ticket.titulo,
+      ticket.descripcion,
+      ticket.id_usuario
+    );
+
+    await sesion.iniciar();
+
     const { data, error } = await supabase
       .from("historial_ticket")
-      .insert([{
-        id_ticket: ticket.id_ticket,
-        id_usuario: null, // null = sistema
-        comentario: respuestasAuto.bienvenida,
-        fecha: new Date().toISOString()
-      }])
-      .select();
+      .select("*")
+      .eq("id_ticket", ticket.id_ticket)
+      .order("fecha", { ascending: false })
+      .limit(1)
+      .single();
 
     if (error) throw error;
 
-    // 2. Actualizar el historial local si hay callback
     if (onHistorialUpdate && data) {
-      onHistorialUpdate(ticket.id_ticket, data[0]);
+      onHistorialUpdate(ticket.id_ticket, data);
     }
 
-    return data[0];
+    return data;
   } catch (error) {
     console.error("Error enviando auto-respuesta:", error);
     return null;
@@ -41,7 +40,7 @@ export async function enviarNotificacionAsignacion(ticketId, tecnicoNombre) {
       .insert([{
         id_ticket: ticketId,
         id_usuario: null,
-        comentario: respuestasAuto.asignado(tecnicoNombre),
+        comentario: `Tu ticket ha sido asignado a ${tecnicoNombre}.`,
         fecha: new Date().toISOString()
       }]);
 
@@ -58,7 +57,7 @@ export async function enviarNotificacionCierre(ticketId) {
       .insert([{
         id_ticket: ticketId,
         id_usuario: null,
-        comentario: respuestasAuto.cerrado,
+        comentario: "Tu ticket ha sido cerrado. Gracias por usar nuestro sistema.",
         fecha: new Date().toISOString()
       }]);
 
