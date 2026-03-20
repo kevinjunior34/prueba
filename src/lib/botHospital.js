@@ -50,20 +50,22 @@ REGLAS:
 
 async function llamarClaude(mensajes) {
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1000,
-        system: SYSTEM_PROMPT,
-        messages: mensajes
-      })
-    });
+    const SUPABASE_URL = "https://gelngkrfmbzjpbhesexd.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGci..."; // tu anon key de supabase.js
+
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/claude-proxy`, {
+    method: "POST",
+    headers: {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
+  },
+  body: JSON.stringify({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 1000,
+    system: SYSTEM_PROMPT,
+    messages: mensajes
+  })
+});
 
     if (!response.ok) {
       const errorData = await response.json();
