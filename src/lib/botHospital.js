@@ -51,13 +51,14 @@ REGLAS:
 async function llamarClaude(mensajes) {
   try {
     const SUPABASE_URL = "https://gelngkrfmbzjpbhesexd.supabase.co";
-    const SUPABASE_ANON_KEY = "https://gelngkrfmbzjpbhesexd.supabase.co/functions/v1/quick-function"; // tu anon key de supabase.js
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdlbG5na3JmbWJ6anBiaGVzZXhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxNDg0NjYsImV4cCI6MjA4ODcyNDQ2Nn0.eUhEApnCRi_zYRZMSiyrNOwXz5DZfPEQz0CYS8dZWdM";
 
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/claude-proxy`, {
-    method: "POST",
-    headers: {
+const response = await fetch(`${SUPABASE_URL}/functions/v1/quick-function`, {
+  method: "POST",
+  headers: {
     "Content-Type": "application/json",
-    "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
+    "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+    "apikey": SUPABASE_ANON_KEY
   },
   body: JSON.stringify({
     model: "claude-sonnet-4-20250514",
@@ -66,7 +67,6 @@ async function llamarClaude(mensajes) {
     messages: mensajes
   })
 });
-
     if (!response.ok) {
       const errorData = await response.json();
       console.error("❌ Error API Claude:", errorData);
