@@ -51,7 +51,7 @@ REGLAS:
 async function llamarClaude(mensajes) {
   try {
     const SUPABASE_URL = "https://gelngkrfmbzjpbhesexd.supabase.co";
-    const SUPABASE_ANON_KEY = "eyJhbGci..."; // tu anon key de supabase.js
+    const SUPABASE_ANON_KEY = "https://gelngkrfmbzjpbhesexd.supabase.co/functions/v1/quick-function"; // tu anon key de supabase.js
 
     const response = await fetch(`${SUPABASE_URL}/functions/v1/claude-proxy`, {
     method: "POST",
