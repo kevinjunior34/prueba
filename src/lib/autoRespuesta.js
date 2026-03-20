@@ -3,14 +3,12 @@ import { generarSoluciones } from "./botHospital.js";
 
 export async function enviarAutoRespuesta(ticket, areaNombre, onHistorialUpdate) {
   try {
-    // Genera las 3 soluciones y las guarda directo en historial_ticket
     const entrada = await generarSoluciones(
       ticket.id_ticket,
       ticket.titulo,
       ticket.descripcion
     );
 
-    // Notificar a la UI con la nueva entrada del historial
     if (onHistorialUpdate && entrada) {
       onHistorialUpdate(ticket.id_ticket, entrada);
     }

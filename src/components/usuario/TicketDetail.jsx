@@ -3,7 +3,7 @@ import { Ic } from "../common/Ic";
 import { Badge } from "../common/Badge";
 import { getEstado, getPrioridad, fmtDate } from "../../utils/helpers";
 import { supabase } from "../../lib/supabase";
-import { botHospital } from "../../lib/botHospital";
+import { botHospital, generarSoluciones } from "../../lib/botHospital";
 
 function TabHistorial({ ticket, users = [] }) {
   const historial = ticket?.historial ?? [];
@@ -111,7 +111,6 @@ function TabAdjuntos({ ticket }) {
   );
 }
 
-// ── Chat del bot embebido debajo de la descripción ──
 function ChatBot({ ticket, currentUser, onUpdate, toast }) {
   const [mensajes, setMensajes] = useState([]);
   const [input, setInput] = useState("");
@@ -119,35 +118,89 @@ function ChatBot({ ticket, currentUser, onUpdate, toast }) {
   const [sesion, setSesion] = useState(null);
   const [botTerminado, setBotTerminado] = useState(false);
   const bottomRef = useRef(null);
+  const iniciado = useRef(false);
 
-  // Cargar mensajes del historial que ya existen (los del bot)
   useEffect(() => {
-    if (!ticket?.historial) return;
-    const msgs = ticket.historial.map(h => ({
-      id: h.id_historial,
-      esBot: h.id_usuario === null,
-      texto: h.comentario,
-      fecha: h.fecha
-    }));
-    setMensajes(msgs);
+    if (!ticket?.id_ticket || iniciado.current) return;
+    iniciado.current = true;
+
+    const inicializar = async () => {
+      // Cargar historial existente de Supabase
+      const { data: historialDB } = await supabase
+        .from("historial_ticket")
+        .select("*")
+        .eq("id_ticket", ticket.id_ticket)
+        .order("fecha", { ascending: true });
+
+      const historialExistente = historialDB || [];
+
+      if (historialExistente.length > 0) {
+        // Ya tiene mensajes — mostrarlos
+        const msgs = historialExistente.map(h => ({
+          id: h.id_historial,
+          esBot: h.id_usuario === null,
+          texto: h.comentario,
+          fecha: h.fecha
+        }));
+        setMensajes(msgs);
+
+        // Reconstruir contexto del bot
+        const s = botHospital.getSesion(
+          ticket.id_ticket,
+          ticket.titulo,
+          ticket.descripcion,
+          currentUser?.id_usuario
+        );
+        historialExistente.forEach(h => {
+          s.historialChat.push({
+            role: h.id_usuario === null ? "assistant" : "user",
+            content: h.comentario
+          });
+        });
+        setSesion(s);
+      } else {
+        // Sin mensajes — generar las 3 soluciones ahora
+        setEsperando(true);
+        try {
+          const s = botHospital.getSesion(
+            ticket.id_ticket,
+            ticket.titulo,
+            ticket.descripcion,
+            currentUser?.id_usuario
+          );
+          setSesion(s);
+
+          const entrada = await generarSoluciones(
+            ticket.id_ticket,
+            ticket.titulo,
+            ticket.descripcion
+          );
+
+          if (entrada) {
+            const msgBot = {
+              id: entrada.id_historial || Date.now(),
+              esBot: true,
+              texto: entrada.comentario,
+              fecha: entrada.fecha
+            };
+            setMensajes([msgBot]);
+            s.historialChat.push({ role: "assistant", content: entrada.comentario });
+            onUpdate?.({ ...ticket, historial: [...(ticket.historial ?? []), entrada] });
+          }
+        } catch (err) {
+          console.error("Error generando soluciones:", err);
+        } finally {
+          setEsperando(false);
+        }
+      }
+    };
+
+    inicializar();
   }, [ticket?.id_ticket]);
 
-  // Scroll automático al último mensaje
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [mensajes, esperando]);
-
-  // Obtener o crear sesión del bot
-  const getSesion = () => {
-    const s = botHospital.getSesion(
-      ticket.id_ticket,
-      ticket.titulo,
-      ticket.descripcion,
-      currentUser?.id_usuario
-    );
-    setSesion(s);
-    return s;
-  };
 
   const enviar = async () => {
     if (!input.trim() || esperando || botTerminado) return;
@@ -155,7 +208,6 @@ function ChatBot({ ticket, currentUser, onUpdate, toast }) {
     const textoUsuario = input.trim();
     setInput("");
 
-    // Mostrar mensaje del usuario en el chat
     const msgUsuario = {
       id: Date.now(),
       esBot: false,
@@ -166,10 +218,16 @@ function ChatBot({ ticket, currentUser, onUpdate, toast }) {
     setEsperando(true);
 
     try {
-      const s = sesion || getSesion();
+      const s = sesion || botHospital.getSesion(
+        ticket.id_ticket,
+        ticket.titulo,
+        ticket.descripcion,
+        currentUser?.id_usuario
+      );
+      if (!sesion) setSesion(s);
+
       const respuesta = await s.procesarMensaje(textoUsuario);
 
-      // Mostrar respuesta del bot
       const msgBot = {
         id: Date.now() + 1,
         esBot: true,
@@ -178,15 +236,15 @@ function ChatBot({ ticket, currentUser, onUpdate, toast }) {
       };
       setMensajes(prev => [...prev, msgBot]);
 
-      // Actualizar historial en el ticket padre
-      const nuevoHistorial = [
-        ...(ticket.historial ?? []),
-        { id_historial: msgUsuario.id, id_usuario: currentUser.id_usuario, comentario: textoUsuario, fecha: msgUsuario.fecha },
-        { id_historial: msgBot.id, id_usuario: null, comentario: respuesta, fecha: msgBot.fecha }
-      ];
-      onUpdate?.({ ...ticket, historial: nuevoHistorial });
+      onUpdate?.({
+        ...ticket,
+        historial: [
+          ...(ticket.historial ?? []),
+          { id_historial: msgUsuario.id, id_usuario: currentUser?.id_usuario, comentario: textoUsuario, fecha: msgUsuario.fecha },
+          { id_historial: msgBot.id, id_usuario: null, comentario: respuesta, fecha: msgBot.fecha }
+        ]
+      });
 
-      // Verificar si el bot terminó
       const estado = s.getEstado();
       if (!estado.activo) {
         setBotTerminado(true);
@@ -204,74 +262,42 @@ function ChatBot({ ticket, currentUser, onUpdate, toast }) {
 
   return (
     <div style={{
-      marginTop: 16,
-      border: "1px solid #dbeafe",
-      borderRadius: 10,
-      overflow: "hidden",
-      background: "#f8faff"
+      marginTop: 16, border: "1px solid #dbeafe",
+      borderRadius: 10, overflow: "hidden", background: "#f8faff"
     }}>
-      {/* Header del chat */}
+      {/* Header */}
       <div style={{
-        padding: "10px 16px",
-        background: "#5b8dee",
-        display: "flex",
-        alignItems: "center",
-        gap: 8
+        padding: "10px 16px", background: "#5b8dee",
+        display: "flex", alignItems: "center", gap: 8
       }}>
         <span style={{ fontSize: 16 }}>🤖</span>
-        <span style={{ color: "white", fontSize: 13, fontWeight: 600 }}>
-          Asistente Virtual
+        <span style={{ color: "white", fontSize: 13, fontWeight: 600 }}>Asistente Virtual</span>
+        <span style={{
+          marginLeft: "auto", fontSize: 11,
+          color: "rgba(255,255,255,0.9)",
+          background: "rgba(255,255,255,0.2)",
+          padding: "2px 8px", borderRadius: 10
+        }}>
+          {botTerminado ? "Conversación cerrada" : sesion ? `Intento ${sesion.intentos + 1}/3` : "Activo"}
         </span>
-        {!botTerminado && (
-          <span style={{
-            marginLeft: "auto",
-            fontSize: 11,
-            color: "rgba(255,255,255,0.8)",
-            background: "rgba(255,255,255,0.2)",
-            padding: "2px 8px",
-            borderRadius: 10
-          }}>
-            {sesion ? `Intento ${sesion.intentos + 1}/3` : "Activo"}
-          </span>
-        )}
-        {botTerminado && (
-          <span style={{
-            marginLeft: "auto",
-            fontSize: 11,
-            color: "rgba(255,255,255,0.9)",
-            background: "rgba(255,255,255,0.2)",
-            padding: "2px 8px",
-            borderRadius: 10
-          }}>
-            Conversación cerrada
-          </span>
-        )}
       </div>
 
       {/* Mensajes */}
       <div style={{
-        maxHeight: 320,
-        overflowY: "auto",
-        padding: 16,
-        display: "flex",
-        flexDirection: "column",
-        gap: 12
+        maxHeight: 360, overflowY: "auto", padding: 16,
+        display: "flex", flexDirection: "column", gap: 12
       }}>
         {mensajes.map((msg, idx) => (
           <div key={msg.id || idx} style={{
-            display: "flex",
-            flexDirection: "column",
+            display: "flex", flexDirection: "column",
             alignItems: msg.esBot ? "flex-start" : "flex-end"
           }}>
             <div style={{
-              maxWidth: "85%",
-              padding: "10px 14px",
+              maxWidth: "85%", padding: "10px 14px",
               borderRadius: msg.esBot ? "4px 12px 12px 12px" : "12px 4px 12px 12px",
               background: msg.esBot ? "white" : "#5b8dee",
               color: msg.esBot ? "#1e3a5f" : "white",
-              fontSize: 13,
-              lineHeight: 1.6,
-              whiteSpace: "pre-wrap",
+              fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap",
               boxShadow: "0 1px 3px rgba(0,0,0,0.08)"
             }}>
               {msg.texto}
@@ -282,23 +308,17 @@ function ChatBot({ ticket, currentUser, onUpdate, toast }) {
           </div>
         ))}
 
-        {/* Indicador "escribiendo..." */}
         {esperando && (
           <div style={{ display: "flex", alignItems: "flex-start" }}>
             <div style={{
-              padding: "10px 14px",
-              borderRadius: "4px 12px 12px 12px",
-              background: "white",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
-              display: "flex",
-              gap: 4,
-              alignItems: "center"
+              padding: "10px 14px", borderRadius: "4px 12px 12px 12px",
+              background: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+              display: "flex", gap: 4, alignItems: "center"
             }}>
               {[0, 1, 2].map(i => (
                 <span key={i} style={{
                   width: 6, height: 6, borderRadius: "50%",
-                  background: "#5b8dee",
-                  display: "inline-block",
+                  background: "#5b8dee", display: "inline-block",
                   animation: "bounce 1.2s infinite",
                   animationDelay: `${i * 0.2}s`
                 }} />
@@ -312,11 +332,8 @@ function ChatBot({ ticket, currentUser, onUpdate, toast }) {
       {/* Input */}
       {!botTerminado && (
         <div style={{
-          padding: "10px 12px",
-          borderTop: "1px solid #dbeafe",
-          display: "flex",
-          gap: 8,
-          background: "white"
+          padding: "10px 12px", borderTop: "1px solid #dbeafe",
+          display: "flex", gap: 8, background: "white"
         }}>
           <input
             type="text"
@@ -326,12 +343,9 @@ function ChatBot({ ticket, currentUser, onUpdate, toast }) {
             onKeyDown={e => e.key === "Enter" && !e.shiftKey && enviar()}
             disabled={esperando}
             style={{
-              flex: 1,
-              padding: "8px 12px",
-              border: "1px solid #dbeafe",
-              borderRadius: 20,
-              fontSize: 13,
-              outline: "none",
+              flex: 1, padding: "8px 12px",
+              border: "1px solid #dbeafe", borderRadius: 20,
+              fontSize: 13, outline: "none",
               opacity: esperando ? 0.6 : 1
             }}
           />
@@ -339,14 +353,9 @@ function ChatBot({ ticket, currentUser, onUpdate, toast }) {
             onClick={enviar}
             disabled={!input.trim() || esperando}
             style={{
-              background: "#5b8dee",
-              color: "white",
-              border: "none",
-              borderRadius: 20,
-              padding: "8px 16px",
-              fontSize: 13,
-              cursor: "pointer",
-              opacity: !input.trim() || esperando ? 0.5 : 1
+              background: "#5b8dee", color: "white", border: "none",
+              borderRadius: 20, padding: "8px 16px", fontSize: 13,
+              cursor: "pointer", opacity: !input.trim() || esperando ? 0.5 : 1
             }}
           >
             Enviar
@@ -354,7 +363,6 @@ function ChatBot({ ticket, currentUser, onUpdate, toast }) {
         </div>
       )}
 
-      {/* Animación de los puntos */}
       <style>{`
         @keyframes bounce {
           0%, 60%, 100% { transform: translateY(0); }
@@ -387,21 +395,16 @@ export function TicketDetail({ ticket, onClose, users = [], areas = [], currentU
     <div className="hd-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="hd-modal" style={{ maxWidth: 700, maxHeight: "90vh", overflow: "auto" }}>
 
-        {/* Header */}
         <div className="hd-modal__header" style={{
           padding: 20, borderBottom: "1px solid #eef0f6",
           display: "flex", justifyContent: "space-between", alignItems: "flex-start"
         }}>
           <div>
-            <div style={{ fontSize: 12, color: "#6b7fa3", marginBottom: 4 }}>
-              TICKET #{ticket.id_ticket}
-            </div>
+            <div style={{ fontSize: 12, color: "#6b7fa3", marginBottom: 4 }}>TICKET #{ticket.id_ticket}</div>
             <h3 style={{ margin: "0 0 8px 0", fontSize: 18 }}>{ticket.titulo}</h3>
             <div style={{ display: "flex", gap: 10 }}>
               <Badge id_estado={ticket.id_estado} />
-              <span style={{ fontSize: 12, color: prioridad?.color, fontWeight: 600 }}>
-                ● {prioridad?.label}
-              </span>
+              <span style={{ fontSize: 12, color: prioridad?.color, fontWeight: 600 }}>● {prioridad?.label}</span>
             </div>
           </div>
           <button onClick={onClose} style={{
@@ -410,7 +413,6 @@ export function TicketDetail({ ticket, onClose, users = [], areas = [], currentU
           }}>✕</button>
         </div>
 
-        {/* Tabs */}
         <div style={{ display: "flex", borderBottom: "1px solid #eef0f6", padding: "0 20px" }}>
           {tabs.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} style={{
@@ -427,19 +429,15 @@ export function TicketDetail({ ticket, onClose, users = [], areas = [], currentU
                   background: tab === t.id ? "#5b8dee" : "#eef0f6",
                   color: tab === t.id ? "#fff" : "#6b7fa3",
                   padding: "2px 6px", borderRadius: 10, fontSize: 10
-                }}>
-                  {t.badge}
-                </span>
+                }}>{t.badge}</span>
               )}
             </button>
           ))}
         </div>
 
-        {/* Contenido */}
         <div style={{ padding: 24 }}>
           {tab === "detalles" && (
             <>
-              {/* Info grid */}
               <div style={{
                 display: "grid", gridTemplateColumns: "repeat(2, 1fr)",
                 gap: 16, background: "#f8f9fd", padding: 16,
@@ -465,7 +463,6 @@ export function TicketDetail({ ticket, onClose, users = [], areas = [], currentU
                 </div>
               </div>
 
-              {/* Descripción */}
               <div style={{ marginBottom: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Descripción</div>
                 <div style={{
@@ -476,7 +473,6 @@ export function TicketDetail({ ticket, onClose, users = [], areas = [], currentU
                 </div>
               </div>
 
-              {/* ── Chat del bot justo debajo de la descripción ── */}
               {!esCerrado && (
                 <ChatBot
                   ticket={ticket}
@@ -488,9 +484,8 @@ export function TicketDetail({ ticket, onClose, users = [], areas = [], currentU
 
               {esCerrado && (
                 <div style={{
-                  marginTop: 16,
-                  background: "#f0fdf4", border: "1px solid #bbf7d0",
-                  borderRadius: 8, padding: 12,
+                  marginTop: 16, background: "#f0fdf4",
+                  border: "1px solid #bbf7d0", borderRadius: 8, padding: 12,
                   display: "flex", alignItems: "center", gap: 8, color: "#166534"
                 }}>
                   <span>✅ Ticket cerrado</span>

@@ -48,7 +48,7 @@ REGLAS:
 - SIEMPRE en español.
 - Sé específico con los pasos, no genérico.`;
 
-async function llamarClaude(mensajes, systemOverride = null) {
+async function llamarClaude(mensajes) {
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -60,7 +60,7 @@ async function llamarClaude(mensajes, systemOverride = null) {
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
         max_tokens: 1000,
-        system: systemOverride || SYSTEM_PROMPT,
+        system: SYSTEM_PROMPT,
         messages: mensajes
       })
     });
@@ -86,17 +86,18 @@ export async function generarSoluciones(ticketId, titulo, descripcion) {
   const respuesta = await llamarClaude([{ role: "user", content: prompt }]);
 
   if (!respuesta) {
-    // Guardar mensaje de error en historial
-    await supabase.from("historial_ticket").insert([{
-      id_ticket: ticketId,
-      id_usuario: null,
-      comentario: "⚠️ No pude generar sugerencias automáticas para este ticket. Un técnico lo revisará.",
-      fecha: new Date().toISOString()
-    }]);
-    return null;
+    const { data } = await supabase
+      .from("historial_ticket")
+      .insert([{
+        id_ticket: ticketId,
+        id_usuario: null,
+        comentario: "⚠️ No pude generar sugerencias automáticas para este ticket. Un técnico lo revisará.",
+        fecha: new Date().toISOString()
+      }])
+      .select();
+    return data?.[0] || null;
   }
 
-  // Guardar las 3 soluciones como mensaje del bot en el historial
   const { data, error } = await supabase
     .from("historial_ticket")
     .insert([{
@@ -128,22 +129,6 @@ class SesionBot {
     this.resuelto = false;
     this.escalado = false;
     this.activo = true;
-  }
-
-  async iniciar() {
-    const contenidoTicket = `Título: ${this.ticketTitulo}\nDescripción: ${this.ticketDescripcion}`.trim();
-    this.historialChat.push({ role: "user", content: contenidoTicket });
-
-    const respuestaClaude = await llamarClaude(this.historialChat);
-    if (!respuestaClaude) {
-      const fallback = "⚠️ Hola, recibí tu ticket. Estoy teniendo dificultades para procesarlo. ¿Podrías darme más detalles del problema?";
-      await this.guardarMensaje("bot", fallback);
-      return fallback;
-    }
-
-    this.historialChat.push({ role: "assistant", content: respuestaClaude });
-    await this.guardarMensaje("bot", respuestaClaude);
-    return respuestaClaude;
   }
 
   async procesarMensaje(mensajeUsuario) {
@@ -221,10 +206,16 @@ class SesionBot {
     this.activo = false;
     const tecnico = await asignarTecnicoAuto(this.ticketId);
     await supabase.from("tickets")
-      .update({ diagnostico_bot: { intentos: this.intentos, escalado: true, historial_resumido: this.historialChat.slice(-4) } })
+      .update({
+        diagnostico_bot: {
+          intentos: this.intentos,
+          escalado: true,
+          historial_resumido: this.historialChat.slice(-4)
+        }
+      })
       .eq("id_ticket", this.ticketId);
 
-    let respuesta = mensajePrevio ? mensajePrevio + "\n\n" : "⚠️ **No pude resolver el problema de forma automática.**\n\n";
+    let respuesta = mensajePrevio ? mensajePrevio + "\n\n" : "⚠️ No pude resolver el problema de forma automática.\n\n";
     respuesta += tecnico
       ? `✅ He asignado a **${tecnico.nombre}** como técnico especializado.\n\nTe contactará a la brevedad para asistirte personalmente.`
       : "⚠️ No hay técnicos disponibles en este momento. Un supervisor será notificado.";
@@ -234,7 +225,9 @@ class SesionBot {
   }
 
   estaActivo() { return this.activo; }
-  getEstado() { return { activo: this.activo, resuelto: this.resuelto, escalado: this.escalado, intentos: this.intentos }; }
+  getEstado() {
+    return { activo: this.activo, resuelto: this.resuelto, escalado: this.escalado, intentos: this.intentos };
+  }
 
   async guardarMensaje(tipo, contenido) {
     try {
@@ -252,12 +245,14 @@ class SesionBot {
 
 class BotHospital {
   constructor() { this.sesiones = new Map(); }
+
   getSesion(ticketId, ticketTitulo = "", ticketDescripcion = "", usuarioId = null) {
     if (!this.sesiones.has(ticketId)) {
       this.sesiones.set(ticketId, new SesionBot(ticketId, ticketTitulo, ticketDescripcion, usuarioId));
     }
     return this.sesiones.get(ticketId);
   }
+
   cerrarSesion(ticketId) { this.sesiones.delete(ticketId); }
 }
 
