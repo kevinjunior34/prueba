@@ -31,7 +31,7 @@ const BASE_CONOCIMIENTO_SEED = [
   {
     id: "impresora_001",
     categoria: "Impresora",
-    keywords: ["impresora", "imprimir", "papel", "tóner", "toner", "atasco", "imprime", "no imprime", "cola de impresión", "printer"],
+    keywords: ["impresora", "imprimir", "papel", "tóner", "toner", "atasco", "imprime", "no imprime", "cola de impresión", "printer", "epson", "canon", "brother", "hp", "ecotank", "l3250", "l4260", "l3110", "l4160", "dejo", "dejó", "tinta", "ink", "cartucho", "cartridge", "paró", "paro", "no imprime nada", "borroso", "manchas", "rayas"],
     pasos: [
       "¿La impresora muestra algún error en su pantalla o indicadores LED?",
       "Verifica que la impresora esté encendida, en línea y con papel. Revisa si hay atascos de papel abriendo las tapas.",
@@ -305,12 +305,19 @@ class SesionBot {
       return await this._marcarResuelto();
     }
 
-    // Si no hay entrada clasificada, intentar clasificar con el nuevo mensaje
+    // Si no hay entrada clasificada, reclasificar con contexto acumulado de todos
+    // los mensajes del usuario (título + respuestas) para mayor cobertura de keywords
     if (!this.entradaActual) {
-      const { entrada, confianza } = motor.clasificar(mensajeUsuario);
-      if (entrada && confianza > 0.25) {
+      const contextoAcumulado = [
+        this.tituloTicket,
+        ...this.historialMensajes.filter(m => m.rol === "usuario").map(m => m.texto)
+      ].join(" ");
+      const { entrada, confianza } = motor.clasificar(contextoAcumulado);
+      if (entrada && confianza > 0.15) {
         this.entradaActual = entrada;
         this.pasoActual = 0;
+        // Descontar el intento: el bot encontró contexto, no fue un fallo real
+        this.intentos = Math.max(0, this.intentos - 1);
       }
     }
 
