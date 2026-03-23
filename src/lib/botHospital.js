@@ -300,8 +300,11 @@ class SesionBot {
       return await this._escalar("Solicitado por el usuario.");
     }
 
-    // Comando especial: marcar como resuelto
-    if (/resuelto|solucionado|funciona|funciono|funcionó|listo|gracias|ya está|ya funciona|ya va|ya sirve/i.test(mensajeUsuario)) {
+  // Comando especial: marcar como resuelto
+const tieneNegacion = /\b(no|ya no|tampoco|sigue|aún|aun|nunca|igual|mismo)\b/i.test(mensajeUsuario);
+const indicaResuelto = /\b(resuelto|solucionado|funciona|funciono|funcionó|listo|gracias|ya está|ya funciona|ya va|ya sirve)\b/i.test(mensajeUsuario);
+
+if (indicaResuelto && !tieneNegacion) {
   return await this._marcarResuelto();
 }
 
