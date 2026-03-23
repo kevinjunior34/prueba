@@ -10,6 +10,7 @@ export function Layout({ user, children, activePage, setPage, onLogout }) {
         { id: "tickets",         label: "Tickets",           icon: "ticket"          },
         { id: "usuarios",        label: "Usuarios",          icon: "users"           },
         { id: "archivados",      label: "Archivados",        icon: "archivados"      },
+        { id: "bot",             label: "🤖 Bot / IA",       icon: "bot"             },
       ]
     : isTec
       ? [{ id: "asignados", label: "Mis Asignaciones", icon: "tool" }]
