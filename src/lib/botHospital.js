@@ -572,26 +572,39 @@ export async function obtenerHistorialCompleto(idTicket) {
         id_usuario,
         usuarios (
           nombre,
-          apellido,
           rol
         )
       `)
       .eq("id_ticket", idTicket)
       .order("fecha", { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      console.error("Supabase error:", error);
+      throw error;
+    }
 
-    // Normalizar cada entrada para facilitar el renderizado
-    return (data || []).map(row => ({
-      id: row.id_historial,
-      comentario: row.comentario,
-      fecha: row.fecha,
-      esBot: row.id_usuario === null,
-      autor: row.id_usuario === null
-        ? "🤖 Asistente virtual"
-        : `${row.usuarios?.nombre ?? ""} ${row.usuarios?.apellido ?? ""}`.trim() || "Usuario",
-      rol: row.id_usuario === null ? "bot" : (row.usuarios?.rol ?? "usuario"),
-    }));
+    // Normalizar datos para tu UI
+    return (data || []).map(row => {
+      const esBot = row.id_usuario === null;
+
+      return {
+        id: row.id_historial,
+        comentario: row.comentario,
+        fecha: row.fecha,
+        esBot,
+
+        // 👇 autor limpio (sin apellido)
+        autor: esBot
+          ? "🤖 Asistente virtual"
+          : row.usuarios?.nombre || "Usuario",
+
+        // 👇 rol consistente
+        rol: esBot
+          ? "bot"
+          : row.usuarios?.rol || "usuario",
+      };
+    });
+
   } catch (e) {
     console.error("Error obteniendo historial completo:", e);
     return [];
