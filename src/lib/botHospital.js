@@ -294,7 +294,9 @@ class SesionBot {
     if (!this.activo) return "";
 
     this.historialMensajes.push({ rol: "usuario", texto: mensajeUsuario });
-
+    
+    // ✅ Guardar mensaje del usuario en Supabase
+    await this._guardarEnHistorial(mensajeUsuario, this.idUsuario);
     // Comando especial: escalar inmediatamente
     if (/técnico|tecnico|asignar|persona|humano|ayuda real/i.test(mensajeUsuario)) {
       return await this._escalar("Solicitado por el usuario.");
