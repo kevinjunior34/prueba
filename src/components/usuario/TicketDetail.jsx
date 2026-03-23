@@ -37,9 +37,6 @@ function TabHistorial({ ticket, users = [] }) {
   const COLORES = {
     bot:      { bg:"#EFF6FF", borde:"#93C5FD", texto:"#1E40AF" },
     usuario:  { bg:"#F8F9FD", borde:"#E5E7EB", texto:"#374151" },
-    tecnico:  { bg:"#FFFBEB", borde:"#FCD34D", texto:"#92400E" },
-    escalado: { bg:"#FFF7ED", borde:"#FCA5A5", texto:"#9A3412" },
-    resuelto: { bg:"#F0FDF4", borde:"#86EFAC", texto:"#166534" },
   };
 
   const getTipo = (e) => {
@@ -320,7 +317,7 @@ export function TicketDetail({ ticket, onClose, users = [], areas = [], currentU
   const tabs = [
     { id: "detalles", label: "Detalles", icon: "file-text" },
     { id: "adjuntos", label: "Adjuntos", icon: "image" },
-    { id: "historial", label: "Historial", icon: "clock", badge: nHistorial }
+    { id: "historial", label: "Historial", icon: "clock" }
   ];
 
   return (
