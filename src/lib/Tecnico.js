@@ -2,11 +2,12 @@ import { supabase } from "./supabase";
 
 export async function asignarTecnicoAuto(idTicket, idArea = null) {
   try {
-    // 1. Obtener todos los técnicos
+    // 1. Obtener todos los técnicos (sin tickets_activos)
     const { data: tecnicos, error: errorTecnicos } = await supabase
       .from("usuarios")
-      .select("id_usuario, nombre, tickets_activos")
-      .eq("rol", "TECNICO");
+      .select("id_usuario, nombre")  // ✅ solo columnas que existen
+      .eq("rol", "TECNICO")
+      .eq("estado", "ACTIVO");       // ✅ opcional pero recomendable
 
     if (errorTecnicos) throw errorTecnicos;
     if (!tecnicos || tecnicos.length === 0) {
@@ -14,7 +15,7 @@ export async function asignarTecnicoAuto(idTicket, idArea = null) {
       return null;
     }
 
-    // 2. Contar tickets activos de cada técnico
+    // 2. Contar tickets activos de cada técnico (esto ya estaba bien)
     const conteos = await Promise.all(
       tecnicos.map(async (tecnico) => {
         const { count, error } = await supabase
