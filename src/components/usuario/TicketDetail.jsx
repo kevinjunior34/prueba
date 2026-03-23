@@ -3,48 +3,122 @@ import { Ic } from "../common/Ic";
 import { Badge } from "../common/Badge";
 import { getEstado, getPrioridad, fmtDate } from "../../utils/helpers";
 import { supabase } from "../../lib/supabase";
-import { botHospital } from "../../lib/botHospital";
-
+import { botHospital, obtenerHistorialCompleto } from "../../lib/botHospital";
 function TabHistorial({ ticket, users = [] }) {
-  const historial = ticket?.historial ?? [];
-  const getUser = (id) => users?.find(u => u?.id_usuario === id) || null;
+  const [historial, setHistorial] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [busqueda, setBusqueda] = useState("");
+  const [filtro, setFiltro] = useState("todos");
 
-  if (!historial || historial.length === 0) {
-    return (
-      <div style={{ textAlign: "center", padding: 40, color: "#6b7fa3" }}>
-        <Ic n="clock" size={32} style={{ opacity: 0.25 }} />
-        <p>Sin entradas en el historial</p>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (!ticket?.id_ticket) return;
+    setCargando(true);
+    obtenerHistorialCompleto(ticket.id_ticket)
+      .then(setHistorial)
+      .finally(() => setCargando(false));
+  }, [ticket?.id_ticket]);
+
+  const filtrado = historial.filter(e => {
+    const texto = e.comentario?.toLowerCase() ?? "";
+    const autor = e.autor?.toLowerCase() ?? "";
+    const pasaBusqueda = busqueda === "" || texto.includes(busqueda.toLowerCase()) || autor.includes(busqueda.toLowerCase());
+    const pasaFiltro =
+      filtro === "todos" ||
+      (filtro === "bot"     && e.esBot && !/escalado|resuelto/i.test(e.comentario)) ||
+      (filtro === "usuario" && !e.esBot && e.rol !== "tecnico") ||
+      (filtro === "tecnico" && e.rol === "tecnico") ||
+      (filtro === "escalado"&& /escalado a soporte humano/i.test(e.comentario)) ||
+      (filtro === "resuelto"&& /marcado como \*\*resuelto\*\*/i.test(e.comentario));
+    return pasaBusqueda && pasaFiltro;
+  });
+
+  const FILTROS = ["todos", "bot", "usuario", "tecnico", "escalado", "resuelto"];
+  const LABELS  = { todos:"Todos", bot:"🤖 Bot", usuario:"👤 Usuario", tecnico:"🔧 Técnico", escalado:"🔺 Escalado", resuelto:"✅ Resuelto" };
+  const COLORES = {
+    bot:      { bg:"#EFF6FF", borde:"#93C5FD", texto:"#1E40AF" },
+    usuario:  { bg:"#F8F9FD", borde:"#E5E7EB", texto:"#374151" },
+    tecnico:  { bg:"#FFFBEB", borde:"#FCD34D", texto:"#92400E" },
+    escalado: { bg:"#FFF7ED", borde:"#FCA5A5", texto:"#9A3412" },
+    resuelto: { bg:"#F0FDF4", borde:"#86EFAC", texto:"#166534" },
+  };
+
+  const getTipo = (e) => {
+    if (!e.esBot) return e.rol === "tecnico" ? "tecnico" : "usuario";
+    if (/escalado a soporte humano/i.test(e.comentario)) return "escalado";
+    if (/marcado como \*\*resuelto\*\*/i.test(e.comentario)) return "resuelto";
+    return "bot";
+  };
+
+  if (cargando) return (
+    <div style={{ textAlign:"center", padding:40, color:"#6b7fa3" }}>
+      Cargando historial...
+    </div>
+  );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {historial.map((entry, idx) => {
-        const autor = getUser(entry.id_usuario);
-        const esBot = entry.id_usuario === null;
-        
-        return (
-          <div key={entry.id_historial || idx} style={{
-            padding: 12,
-            background: esBot ? "#f0f7ff" : "#f8f9fd",
-            borderRadius: 8,
-            borderLeft: esBot ? "4px solid #5b8dee" : "4px solid #e5e7eb"
+    <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+      {/* Barra de filtros */}
+      <div style={{ display:"flex", flexWrap:"wrap", gap:6, alignItems:"center" }}>
+        {FILTROS.map(f => (
+          <button key={f} onClick={() => setFiltro(f)} style={{
+            padding:"3px 10px", borderRadius:999, fontSize:11, fontWeight:600,
+            cursor:"pointer", border:"1px solid",
+            borderColor: filtro === f ? "#5b8dee" : "#d1d5db",
+            background:  filtro === f ? "#5b8dee" : "#fff",
+            color:       filtro === f ? "#fff"    : "#6b7280",
           }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: esBot ? "#5b8dee" : "#374151" }}>
-                {esBot ? "🤖 Asistente Virtual" : autor?.nombre || "Usuario"}
-              </span>
-              <span style={{ fontSize: 11, color: "#6b7fa3" }}>
-                {fmtDate(entry.fecha)}
-              </span>
+            {LABELS[f]}
+          </button>
+        ))}
+        <input
+          type="text" placeholder="🔍 Buscar..."
+          value={busqueda} onChange={e => setBusqueda(e.target.value)}
+          style={{
+            marginLeft:"auto", padding:"4px 10px", borderRadius:6,
+            border:"1px solid #d1d5db", fontSize:12, color:"#374151",
+            outline:"none", minWidth:160,
+          }}
+        />
+      </div>
+
+      {/* Conteo */}
+      <div style={{ fontSize:11, color:"#9ca3af" }}>
+        {filtrado.length} de {historial.length} entrada{historial.length !== 1 ? "s" : ""}
+      </div>
+
+      {/* Entradas */}
+      {filtrado.length === 0 ? (
+        <div style={{ textAlign:"center", padding:32, color:"#6b7fa3", fontSize:13 }}>
+          Sin resultados para los filtros seleccionados.
+        </div>
+      ) : (
+        filtrado.map((entry, idx) => {
+          const tipo   = getTipo(entry);
+          const colores = COLORES[tipo] ?? COLORES.usuario;
+          return (
+            <div key={entry.id ?? idx} style={{
+              padding:12, borderRadius:8,
+              background: colores.bg,
+              borderLeft: `4px solid ${colores.borde}`,
+            }}>
+              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
+                <span style={{ fontSize:12, fontWeight:600, color: colores.texto }}>
+                  {entry.autor}
+                </span>
+                <span style={{ fontSize:11, color:"#6b7fa3" }}>
+                  {entry.fecha ? new Date(entry.fecha).toLocaleString("es-PE", {
+                    day:"2-digit", month:"2-digit", year:"numeric",
+                    hour:"2-digit", minute:"2-digit"
+                  }) : ""}
+                </span>
+              </div>
+              <p style={{ margin:0, fontSize:13, lineHeight:1.5, whiteSpace:"pre-wrap", color:"#374151" }}>
+                {entry.comentario}
+              </p>
             </div>
-            <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
-              {entry.comentario}
-            </p>
-          </div>
-        );
-      })}
+          );
+        })
+      )}
     </div>
   );
 }
