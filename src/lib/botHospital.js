@@ -301,9 +301,9 @@ class SesionBot {
     }
 
     // Comando especial: marcar como resuelto
-    if (/resuelto|solucionado|funciona|listo|gracias|ya está|ya funciona/i.test(mensajeUsuario)) {
-      return await this._marcarResuelto();
-    }
+    if (/resuelto|solucionado|funciona|funciono|funcionó|listo|gracias|ya está|ya funciona|ya va|ya sirve/i.test(mensajeUsuario)) {
+  return await this._marcarResuelto();
+}
 
     // Si no hay entrada clasificada, reclasificar con contexto acumulado de todos
     // los mensajes del usuario (título + respuestas) para mayor cobertura de keywords
