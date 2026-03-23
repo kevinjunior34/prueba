@@ -33,7 +33,7 @@ function TabHistorial({ ticket, users = [] }) {
   });
 
   const FILTROS = ["todos", "bot", "usuario", "tecnico", "escalado", "resuelto"];
-  const LABELS  = { todos:"Todos", bot:"🤖 Bot", usuario:"👤 Usuario", tecnico:"🔧 Técnico", escalado:"🔺 Escalado", resuelto:"✅ Resuelto" };
+  const LABELS  = { todos:"Todos", bot:"🤖 Bot", usuario:"👤 Usuario" };
   const COLORES = {
     bot:      { bg:"#EFF6FF", borde:"#93C5FD", texto:"#1E40AF" },
     usuario:  { bg:"#F8F9FD", borde:"#E5E7EB", texto:"#374151" },
