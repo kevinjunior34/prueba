@@ -229,6 +229,8 @@ export function TicketDetail({ ticket, onClose, users = [], areas = [], currentU
   const [enviando, setEnviando] = useState(false);
   const [botSession, setBotSession] = useState(null);
   const [esperandoBot, setEsperandoBot] = useState(false);
+  const [imagenBot, setImagenBot] = useState(null);      // { base64, mime, preview }
+  const fileInputRef = useState(null);
 
   if (!ticket) return null;
 
@@ -268,11 +270,13 @@ export function TicketDetail({ ticket, onClose, users = [], areas = [], currentU
   };
 
   const enviarComentario = async () => {
-    if (!comentario.trim() || esCerrado || !currentUser?.id_usuario) return;
+    if ((!comentario.trim() && !imagenBot) || esCerrado || !currentUser?.id_usuario) return;
     
     // Guardar mensaje del usuario temporalmente
     const mensajeUsuario = comentario.trim();
     setComentario(""); // Limpiar inmediatamente
+    const imagenEnvio = imagenBot;
+    setImagenBot(null);
     
     setEnviando(true);
     
@@ -283,7 +287,7 @@ export function TicketDetail({ ticket, onClose, users = [], areas = [], currentU
         const mensajeUsuarioObj = {
           id_historial: Date.now(),
           id_usuario: currentUser.id_usuario,
-          comentario: mensajeUsuario,
+          comentario: mensajeUsuario || "📎 [Imagen adjunta]",
           fecha: new Date().toISOString()
         };
         
@@ -292,7 +296,11 @@ export function TicketDetail({ ticket, onClose, users = [], areas = [], currentU
         
         // 2. Procesar con el bot (esto puede tomar tiempo)
         setEsperandoBot(true);
-        const respuestaBot = await botSession.procesarMensaje(mensajeUsuario);
+        const respuestaBot = await botSession.procesarMensaje(
+          mensajeUsuario,
+          imagenEnvio?.base64 ?? null,
+          imagenEnvio?.mime ?? "image/jpeg"
+        );
         
         // 3. Guardar respuesta del bot
         const respuestaBotObj = {
@@ -549,7 +557,7 @@ export function TicketDetail({ ticket, onClose, users = [], areas = [], currentU
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       <textarea
                         rows={3}
-                        placeholder="Escribe tu mensaje..."
+                        placeholder="Escribe tu mensaje o adjunta una imagen..."
                         value={comentario}
                         onChange={e => setComentario(e.target.value)}
                         onKeyDown={e => {
@@ -568,13 +576,54 @@ export function TicketDetail({ ticket, onClose, users = [], areas = [], currentU
                           opacity: enviando || esperandoBot ? 0.6 : 1
                         }}
                       />
+
+                      {/* Preview de imagen seleccionada */}
+                      {imagenBot && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", background: "#eff6ff", borderRadius: 6, border: "1px solid #93c5fd" }}>
+                          <img src={imagenBot.preview} alt="preview" style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 4, border: "1px solid #bfdbfe" }} />
+                          <span style={{ fontSize: 12, color: "#1e40af", flex: 1 }}>Imagen lista para analizar</span>
+                          <button onClick={() => setImagenBot(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "#6b7fa3", fontSize: 16, lineHeight: 1 }}>✕</button>
+                        </div>
+                      )}
+
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <span style={{ fontSize: 11, color: "#b0bbd4" }}>
-                          Ctrl + Enter para enviar
-                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 11, color: "#b0bbd4" }}>
+                            Ctrl + Enter para enviar
+                          </span>
+                          {/* Botón adjuntar imagen */}
+                          <label title="Adjuntar imagen al bot" style={{
+                            display: "flex", alignItems: "center", gap: 4,
+                            cursor: "pointer", fontSize: 12, color: "#5b8dee",
+                            padding: "4px 8px", borderRadius: 6,
+                            border: "1px solid #c7d9fb", background: "#f0f5ff",
+                            opacity: enviando || esperandoBot ? 0.5 : 1,
+                            pointerEvents: enviando || esperandoBot ? "none" : "auto"
+                          }}>
+                            <Ic n="image" size={13} color="#5b8dee" />
+                            <span>Imagen</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              style={{ display: "none" }}
+                              onChange={e => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                const reader = new FileReader();
+                                reader.onload = ev => {
+                                  const result = ev.target.result;
+                                  const base64 = result.split(",")[1];
+                                  setImagenBot({ base64, mime: file.type, preview: result });
+                                };
+                                reader.readAsDataURL(file);
+                                e.target.value = "";
+                              }}
+                            />
+                          </label>
+                        </div>
                         <button
                           onClick={enviarComentario}
-                          disabled={!comentario.trim() || enviando || esperandoBot}
+                          disabled={(!comentario.trim() && !imagenBot) || enviando || esperandoBot}
                           style={{
                             background: "#5b8dee",
                             color: "white",
@@ -583,7 +632,7 @@ export function TicketDetail({ ticket, onClose, users = [], areas = [], currentU
                             padding: "8px 16px",
                             fontSize: 13,
                             cursor: "pointer",
-                            opacity: !comentario.trim() || enviando || esperandoBot ? 0.6 : 1
+                            opacity: ((!comentario.trim() && !imagenBot) || enviando || esperandoBot) ? 0.6 : 1
                           }}
                         >
                           {enviando ? "Enviando..." : "Enviar"}
