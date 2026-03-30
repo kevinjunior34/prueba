@@ -105,8 +105,6 @@ function TabAdjuntos({ ticket }) {
     </>
   );
 }
-
-// ─── Tab: Historial ───────────────────────────────────────────────────────────
 function TabHistorial({ ticket, user, onComentarioEnviado }) {
   const historial  = ticket.historial ?? [];
   const [texto,    setTexto]    = useState("");
@@ -134,11 +132,8 @@ function TabHistorial({ ticket, user, onComentarioEnviado }) {
       setEnviando(false);
     }
   };
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-
-      {/* Timeline */}
       {historial.length === 0 ? (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "24px 0", gap: 8, color: "#6b7fa3" }}>
           <Ic n="clock" size={28} style={{ opacity: .25 }} />
