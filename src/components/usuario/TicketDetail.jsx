@@ -1,365 +1,82 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Ic } from "../common/Ic";
 import { Badge } from "../common/Badge";
-import { getEstado, getPrioridad, fmtDate } from "../../utils/helpers";
+import { getPrioridad, fmtDate } from "../../utils/helpers";
 import { supabase } from "../../lib/supabase";
-import { botHospital, obtenerHistorialCompleto } from "../../lib/botHospital";
-function TabHistorial({ ticket, users = [] }) {
-  const [historial, setHistorial] = useState([]);
-  const [cargando, setCargando] = useState(true);
-  const [busqueda, setBusqueda] = useState("");
-  const [filtro, setFiltro] = useState("todos");
+import { TicketDetailHistorial } from "./TicketDetailHistorial";
+import { TicketDetailAdjuntos } from "./TicketDetailAdjuntos";
+import { useTicketDetailBot } from "./TicketDetailBot";
 
-  useEffect(() => {
-    if (!ticket?.id_ticket) return;
-    setCargando(true);
-    obtenerHistorialCompleto(ticket.id_ticket)
-      .then(setHistorial)
-      .finally(() => setCargando(false));
-  }, [ticket?.id_ticket]);
-
-  const filtrado = historial.filter(e => {
-    const texto = e.comentario?.toLowerCase() ?? "";
-    const autor = e.autor?.toLowerCase() ?? "";
-
-    const pasaBusqueda =
-      busqueda === "" ||
-      texto.includes(busqueda.toLowerCase()) ||
-      autor.includes(busqueda.toLowerCase());
-
-    const pasaFiltro =
-      filtro === "todos" ||
-      (filtro === "bot" && e.esBot) ||
-      (filtro === "usuario" && !e.esBot);
-
-    return pasaBusqueda && pasaFiltro;
-  });
-
-  // ✅ TUS CONFIGURACIONES
-  const FILTROS = ["todos", "bot", "usuario"];
-  const LABELS  = { todos:"Todos", bot:"🤖 Bot", usuario:"👤 Usuario" };
-  const COLORES = {
-    bot:     { bg:"#EFF6FF", borde:"#93C5FD", texto:"#1E40AF" },
-    usuario: { bg:"#F8F9FD", borde:"#E5E7EB", texto:"#374151" },
-  };
-
-  // ✅ Simplificado
-  const getTipo = (e) => {
-    return e.esBot ? "bot" : "usuario";
-  };
-
-  if (cargando) return (
-    <div style={{ textAlign:"center", padding:40, color:"#6b7fa3" }}>
-      Cargando historial...
-    </div>
-  );
-
-  return (
-    <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-
-      {/* Barra de filtros */}
-      <div style={{ display:"flex", flexWrap:"wrap", gap:6, alignItems:"center" }}>
-        {FILTROS.map(f => (
-          <button key={f} onClick={() => setFiltro(f)} style={{
-            padding:"3px 10px",
-            borderRadius:999,
-            fontSize:11,
-            fontWeight:600,
-            cursor:"pointer",
-            border:"1px solid",
-            borderColor: filtro === f ? "#5b8dee" : "#d1d5db",
-            background:  filtro === f ? "#5b8dee" : "#fff",
-            color:       filtro === f ? "#fff"    : "#6b7280",
-          }}>
-            {LABELS[f]}
-          </button>
-        ))}
-
-        <input
-          type="text"
-          placeholder="🔍 Buscar..."
-          value={busqueda}
-          onChange={e => setBusqueda(e.target.value)}
-          style={{
-            marginLeft:"auto",
-            padding:"4px 10px",
-            borderRadius:6,
-            border:"1px solid #d1d5db",
-            fontSize:12,
-            color:"#374151",
-            outline:"none",
-            minWidth:160,
-          }}
-        />
-      </div>
-
-      {/* Conteo */}
-      <div style={{ fontSize:11, color:"#9ca3af" }}>
-        {filtrado.length} de {historial.length} entrada{historial.length !== 1 ? "s" : ""}
-      </div>
-
-      {/* Entradas */}
-      {filtrado.length === 0 ? (
-        <div style={{ textAlign:"center", padding:32, color:"#6b7fa3", fontSize:13 }}>
-          Sin resultados para los filtros seleccionados.
-        </div>
-      ) : (
-        filtrado.map((entry, idx) => {
-          const tipo = getTipo(entry);
-          const colores = COLORES[tipo];
-
-          return (
-            <div key={entry.id ?? idx} style={{
-              padding:12,
-              borderRadius:8,
-              background: colores.bg,
-              borderLeft: `4px solid ${colores.borde}`,
-            }}>
-              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
-                <span style={{ fontSize:12, fontWeight:600, color: colores.texto }}>
-                  {entry.autor}
-                </span>
-
-                <span style={{ fontSize:11, color:"#6b7fa3" }}>
-                  {entry.fecha ? new Date(entry.fecha).toLocaleString("es-PE", {
-                    day:"2-digit",
-                    month:"2-digit",
-                    year:"numeric",
-                    hour:"2-digit",
-                    minute:"2-digit"
-                  }) : ""}
-                </span>
-              </div>
-
-              <p style={{
-                margin:0,
-                fontSize:13,
-                lineHeight:1.5,
-                whiteSpace:"pre-wrap",
-                color:"#374151"
-              }}>
-                {entry.comentario}
-              </p>
-            </div>
-          );
-        })
-      )}
-    </div>
-  );
-}
-
-function TabAdjuntos({ ticket }) {
-  const [adjuntos, setAdjuntos] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [preview, setPreview] = useState(null);
-
-  useEffect(() => {
-    const cargar = async () => {
-      if (!ticket?.id_ticket) return;
-      
-      try {
-        const { data, error } = await supabase
-          .from("adjuntos")
-          .select("id_adjunto, archivo")
-          .eq("id_ticket", ticket.id_ticket);
-
-        if (error) throw error;
-        
-        const conUrls = (data || []).map(adj => ({
-          ...adj,
-          url: supabase.storage.from("adjuntos").getPublicUrl(adj.archivo).data.publicUrl
-        }));
-        
-        setAdjuntos(conUrls);
-      } catch (error) {
-        console.error("Error:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    cargar();
-  }, [ticket?.id_ticket]);
-
-  if (loading) return <div style={{ textAlign: "center", padding: 40 }}>Cargando...</div>;
-  
-  if (adjuntos.length === 0) {
-    return (
-      <div style={{ textAlign: "center", padding: 40, color: "#6b7fa3" }}>
-        <Ic n="image" size={32} style={{ opacity: 0.25 }} />
-        <p>Sin imágenes adjuntas</p>
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 }}>
-        {adjuntos.map(adj => (
-          <div key={adj.id_adjunto} onClick={() => setPreview(adj)} style={{
-            cursor: "pointer",
-            border: "1px solid #eef0f6",
-            borderRadius: 8,
-            overflow: "hidden"
-          }}>
-            <img src={adj.url} alt="" style={{ width: "100%", height: 120, objectFit: "cover" }} />
-            <div style={{ padding: 6, fontSize: 11, color: "#6b7fa3" }}>
-              {adj.archivo.split('/').pop()}
-            </div>
-          </div>
-        ))}
-      </div>
-      
-      {preview && (
-        <div onClick={() => setPreview(null)} style={{
-          position: "fixed", inset: 0, zIndex: 1200,
-          background: "rgba(0,0,0,0.9)",
-          display: "flex", alignItems: "center", justifyContent: "center"
-        }}>
-          <img src={preview.url} alt="" style={{ maxWidth: "90vw", maxHeight: "90vh" }} />
-        </div>
-      )}
-    </>
-  );
-}
+const TABS = [
+  { id: "detalles", label: "Detalles", icon: "file-text" },
+  { id: "adjuntos", label: "Adjuntos",  icon: "image" },
+  { id: "historial", label: "Historial", icon: "clock" },
+];
 
 export function TicketDetail({ ticket, onClose, users = [], areas = [], currentUser, onUpdate, toast }) {
   const [tab, setTab] = useState("detalles");
   const [comentario, setComentario] = useState("");
   const [enviando, setEnviando] = useState(false);
-  const [botSession, setBotSession] = useState(null);
-  const [esperandoBot, setEsperandoBot] = useState(false);
-  const [imagenBot, setImagenBot] = useState(null);      // { base64, mime, preview }
-  const fileInputRef = useState(null);
+  const [imagenBot, setImagenBot] = useState(null); // { base64, mime, preview }
+
+  const { botSession, esperandoBot, botActivo, intentos, iniciarBot, responderBot } =
+    useTicketDetailBot({ ticket, currentUser, onUpdate, toast });
 
   if (!ticket) return null;
 
-  const prioridad = getPrioridad(ticket.id_prioridad);
-  const getUser = (id) => users?.find(u => u?.id_usuario === id) || null;
-  const getArea = (id) => areas?.find(a => a?.id_area === id) || null;
-  const nHistorial = ticket.historial?.length ?? 0;
+  const prioridad       = getPrioridad(ticket.id_prioridad);
+  const getUser         = (id) => users?.find(u => u?.id_usuario === id) || null;
+  const getArea         = (id) => areas?.find(a => a?.id_area === id) || null;
   const tecnicoAsignado = getUser(ticket.id_tecnico);
-  const esCerrado = ticket.id_estado === 3;
-
-  const iniciarBot = async () => {
-    setEsperandoBot(true);
-    try {
-      const session = botHospital.getSesion(
-        ticket.id_ticket,
-        ticket.titulo,
-        currentUser?.id_usuario
-      );
-      setBotSession(session);
-      
-      const mensajeInicial = await session.iniciar();
-      
-      const nuevoHistorial = [...(ticket.historial ?? []), {
-        id_historial: Date.now(),
-        id_usuario: null,
-        comentario: mensajeInicial,
-        fecha: new Date().toISOString()
-      }];
-      
-      onUpdate?.({ ...ticket, historial: nuevoHistorial });
-    } catch (error) {
-      console.error("Error:", error);
-      toast?.("Error al iniciar el asistente", "error");
-    } finally {
-      setEsperandoBot(false);
-    }
-  };
+  const esCerrado       = ticket.id_estado === 3;
 
   const enviarComentario = async () => {
     if ((!comentario.trim() && !imagenBot) || esCerrado || !currentUser?.id_usuario) return;
-    
-    // Guardar mensaje del usuario temporalmente
+
     const mensajeUsuario = comentario.trim();
-    setComentario(""); // Limpiar inmediatamente
-    const imagenEnvio = imagenBot;
+    const imagenEnvio    = imagenBot;
+    setComentario("");
     setImagenBot(null);
-    
     setEnviando(true);
-    
+
     try {
-      // Si el bot está activo, procesar con él
-      if (botSession?.estaActivo()) {
-        // 1. Guardar mensaje del usuario en el historial
-        const mensajeUsuarioObj = {
-          id_historial: Date.now(),
-          id_usuario: currentUser.id_usuario,
-          comentario: mensajeUsuario || "📎 [Imagen adjunta]",
-          fecha: new Date().toISOString()
-        };
-        
-        const historialConUsuario = [...(ticket.historial ?? []), mensajeUsuarioObj];
-        onUpdate?.({ ...ticket, historial: historialConUsuario });
-        
-        // 2. Procesar con el bot (esto puede tomar tiempo)
-        setEsperandoBot(true);
-        const respuestaBot = await botSession.procesarMensaje(
+      if (botActivo) {
+        // Delegar al hook del bot
+        await responderBot({
           mensajeUsuario,
-          imagenEnvio?.base64 ?? null,
-          imagenEnvio?.mime ?? "image/jpeg"
-        );
-        
-        // 3. Guardar respuesta del bot
-        const respuestaBotObj = {
-          id_historial: Date.now() + 1,
-          id_usuario: null,
-          comentario: respuestaBot,
-          fecha: new Date().toISOString()
-        };
-        
-        const historialFinal = [...historialConUsuario, respuestaBotObj];
-        onUpdate?.({ ...ticket, historial: historialFinal });
-        
-        // 4. Verificar si el bot se desactivó (resuelto o escalado)
-        const estadoBot = botSession.getEstado();
-        if (!estadoBot.activo) {
-          if (estadoBot.resuelto) {
-            toast?.("✅ Problema resuelto por el asistente", "success");
-          } else if (estadoBot.escalado) {
-            toast?.("👨‍🔧 Se ha asignado un técnico", "info");
-          }
-        }
+          imagenBot: imagenEnvio,
+          historialActual: ticket.historial ?? [],
+        });
       } else {
-        // Si no hay bot activo, solo guardar el mensaje normal
+        // Guardar comentario normal en Supabase
         const { data, error } = await supabase
           .from("historial_ticket")
           .insert([{
-            id_ticket: ticket.id_ticket,
-            id_usuario: currentUser.id_usuario,
-            comentario: mensajeUsuario,
-            fecha: new Date().toISOString()
+            id_ticket:   ticket.id_ticket,
+            id_usuario:  currentUser.id_usuario,
+            comentario:  mensajeUsuario,
+            fecha:       new Date().toISOString()
           }])
           .select();
 
         if (error) throw error;
 
-        const nuevoHistorial = [...(ticket.historial ?? []), data[0]];
-        onUpdate?.({ ...ticket, historial: nuevoHistorial });
+        onUpdate?.({ ...ticket, historial: [...(ticket.historial ?? []), data[0]] });
       }
     } catch (err) {
-      console.error("Error:", err);
+      console.error("Error al enviar:", err);
       toast?.("Error al enviar mensaje", "error");
-      // Restaurar el mensaje en caso de error
       setComentario(mensajeUsuario);
     } finally {
       setEnviando(false);
-      setEsperandoBot(false);
     }
   };
-
-  const tabs = [
-    { id: "detalles", label: "Detalles", icon: "file-text" },
-    { id: "adjuntos", label: "Adjuntos", icon: "image" },
-    { id: "historial", label: "Historial", icon: "clock" }
-  ];
 
   return (
     <div className="hd-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="hd-modal" style={{ maxWidth: 700, maxHeight: "90vh", overflow: "auto" }}>
-        
+
+        {/* ── Header ── */}
         <div className="hd-modal__header" style={{
           padding: 20,
           borderBottom: "1px solid #eef0f6",
@@ -380,64 +97,44 @@ export function TicketDetail({ ticket, onClose, users = [], areas = [], currentU
             </div>
           </div>
           <button onClick={onClose} style={{
-            background: "#f3f4f6",
-            border: "none",
-            width: 32,
-            height: 32,
-            borderRadius: 16,
-            cursor: "pointer",
-            fontSize: 16
+            background: "#f3f4f6", border: "none",
+            width: 32, height: 32, borderRadius: 16,
+            cursor: "pointer", fontSize: 16
           }}>
             ✕
           </button>
         </div>
 
+        {/* ── Tabs ── */}
         <div style={{ display: "flex", borderBottom: "1px solid #eef0f6", padding: "0 20px" }}>
-          {tabs.map(t => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              style={{
-                padding: "12px 16px",
-                background: "none",
-                border: "none",
-                borderBottom: tab === t.id ? "2px solid #5b8dee" : "none",
-                color: tab === t.id ? "#5b8dee" : "#6b7fa3",
-                fontWeight: tab === t.id ? 600 : 400,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 6
-              }}
-            >
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{
+              padding: "12px 16px",
+              background: "none",
+              border: "none",
+              borderBottom: tab === t.id ? "2px solid #5b8dee" : "none",
+              color:      tab === t.id ? "#5b8dee" : "#6b7fa3",
+              fontWeight: tab === t.id ? 600 : 400,
+              cursor: "pointer",
+              display: "flex", alignItems: "center", gap: 6
+            }}>
               <Ic n={t.icon} size={14} />
               {t.label}
-              {t.badge > 0 && (
-                <span style={{
-                  background: tab === t.id ? "#5b8dee" : "#eef0f6",
-                  color: tab === t.id ? "#fff" : "#6b7fa3",
-                  padding: "2px 6px",
-                  borderRadius: 10,
-                  fontSize: 10
-                }}>
-                  {t.badge}
-                </span>
-              )}
             </button>
           ))}
         </div>
 
+        {/* ── Contenido ── */}
         <div style={{ padding: 24 }}>
+
+          {/* Tab: Detalles */}
           {tab === "detalles" && (
             <>
+              {/* Info grid */}
               <div style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(2, 1fr)",
-                gap: 16,
-                background: "#f8f9fd",
-                padding: 16,
-                borderRadius: 8,
-                marginBottom: 20
+                display: "grid", gridTemplateColumns: "repeat(2, 1fr)",
+                gap: 16, background: "#f8f9fd", padding: 16,
+                borderRadius: 8, marginBottom: 20
               }}>
                 <div>
                   <div style={{ fontSize: 11, color: "#6b7fa3" }}>Usuario</div>
@@ -458,47 +155,40 @@ export function TicketDetail({ ticket, onClose, users = [], areas = [], currentU
                 <div>
                   <div style={{ fontSize: 11, color: "#6b7fa3" }}>Técnico asignado</div>
                   <div style={{ fontSize: 14, fontWeight: 500 }}>
-                    {tecnicoAsignado ? tecnicoAsignado.nombre : (
-                      <span style={{ color: "#f97316" }}>Pendiente</span>
-                    )}
+                    {tecnicoAsignado
+                      ? tecnicoAsignado.nombre
+                      : <span style={{ color: "#f97316" }}>Pendiente</span>}
                   </div>
                 </div>
               </div>
 
+              {/* Descripción */}
               <div style={{ marginBottom: 24 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Descripción</div>
                 <div style={{
-                  background: "#f8f9fd",
-                  padding: 16,
-                  borderRadius: 8,
-                  fontSize: 14,
-                  lineHeight: 1.6
+                  background: "#f8f9fd", padding: 16,
+                  borderRadius: 8, fontSize: 14, lineHeight: 1.6
                 }}>
                   {ticket.descripcion}
                 </div>
               </div>
 
+              {/* Ticket cerrado */}
               {esCerrado ? (
                 <div style={{
-                  background: "#f0fdf4",
-                  border: "1px solid #bbf7d0",
-                  borderRadius: 8,
-                  padding: 12,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  color: "#166534"
+                  background: "#f0fdf4", border: "1px solid #bbf7d0",
+                  borderRadius: 8, padding: 12,
+                  display: "flex", alignItems: "center", gap: 8, color: "#166534"
                 }}>
                   <span>✅ Ticket cerrado</span>
                 </div>
               ) : (
                 <>
-                  {(!botSession || !botSession.estaActivo()) && (
+                  {/* Banner iniciar bot */}
+                  {!botActivo && (
                     <div style={{
-                      marginTop: 20,
-                      padding: 16,
-                      background: "#e8f0fe",
-                      borderRadius: 8,
+                      marginTop: 20, padding: 16,
+                      background: "#e8f0fe", borderRadius: 8,
                       border: "1px solid #5b8dee33"
                     }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
@@ -514,12 +204,9 @@ export function TicketDetail({ ticket, onClose, users = [], areas = [], currentU
                         onClick={iniciarBot}
                         disabled={esperandoBot}
                         style={{
-                          background: "#5b8dee",
-                          color: "white",
-                          border: "none",
-                          borderRadius: 6,
-                          padding: "8px 16px",
-                          fontSize: 13,
+                          background: "#5b8dee", color: "white",
+                          border: "none", borderRadius: 6,
+                          padding: "8px 16px", fontSize: 13,
                           cursor: "pointer",
                           opacity: esperandoBot ? 0.6 : 1
                         }}
@@ -529,27 +216,27 @@ export function TicketDetail({ ticket, onClose, users = [], areas = [], currentU
                     </div>
                   )}
 
-                  {botSession?.estaActivo() && (
+                  {/* Estado bot activo */}
+                  {botActivo && (
                     <div style={{
-                      marginTop: 16,
-                      padding: 12,
-                      background: "#f0f7ff",
-                      borderRadius: 8,
+                      marginTop: 16, padding: 12,
+                      background: "#f0f7ff", borderRadius: 8,
                       borderLeft: "4px solid #5b8dee",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between"
+                      display: "flex", alignItems: "center", justifyContent: "space-between"
                     }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <Ic n="message-circle" size={16} style={{ color: "#5b8dee" }} />
                         <span style={{ fontSize: 13 }}>
-                          Asistente activo - Intento {botSession.intentos + 1}/3
+                          Asistente activo — Intento {intentos + 1}/3
                         </span>
                       </div>
-                      {esperandoBot && <span style={{ fontSize: 11, color: "#6b7fa3" }}>Escribiendo...</span>}
+                      {esperandoBot && (
+                        <span style={{ fontSize: 11, color: "#6b7fa3" }}>Escribiendo...</span>
+                      )}
                     </div>
                   )}
 
+                  {/* Caja de comentario */}
                   <div style={{ marginTop: 20 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>
                       Agregar comentario
@@ -568,31 +255,40 @@ export function TicketDetail({ ticket, onClose, users = [], areas = [], currentU
                         }}
                         disabled={enviando || esperandoBot}
                         style={{
-                          width: "100%",
-                          padding: 10,
+                          width: "100%", padding: 10,
                           border: "1px solid #d1d5db",
-                          borderRadius: 6,
-                          resize: "vertical",
+                          borderRadius: 6, resize: "vertical",
                           opacity: enviando || esperandoBot ? 0.6 : 1
                         }}
                       />
 
-                      {/* Preview de imagen seleccionada */}
+                      {/* Preview imagen */}
                       {imagenBot && (
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", background: "#eff6ff", borderRadius: 6, border: "1px solid #93c5fd" }}>
-                          <img src={imagenBot.preview} alt="preview" style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 4, border: "1px solid #bfdbfe" }} />
-                          <span style={{ fontSize: 12, color: "#1e40af", flex: 1 }}>Imagen lista para analizar</span>
-                          <button onClick={() => setImagenBot(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "#6b7fa3", fontSize: 16, lineHeight: 1 }}>✕</button>
+                        <div style={{
+                          display: "flex", alignItems: "center", gap: 8,
+                          padding: "6px 10px", background: "#eff6ff",
+                          borderRadius: 6, border: "1px solid #93c5fd"
+                        }}>
+                          <img src={imagenBot.preview} alt="preview" style={{
+                            width: 48, height: 48, objectFit: "cover",
+                            borderRadius: 4, border: "1px solid #bfdbfe"
+                          }} />
+                          <span style={{ fontSize: 12, color: "#1e40af", flex: 1 }}>
+                            Imagen lista para analizar
+                          </span>
+                          <button onClick={() => setImagenBot(null)} style={{
+                            background: "none", border: "none",
+                            cursor: "pointer", color: "#6b7fa3", fontSize: 16
+                          }}>✕</button>
                         </div>
                       )}
 
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ fontSize: 11, color: "#b0bbd4" }}>
-                            Ctrl + Enter para enviar
-                          </span>
-                          {/* Botón adjuntar imagen */}
-                          <label title="Adjuntar imagen al bot" style={{
+                          <span style={{ fontSize: 11, color: "#b0bbd4" }}>Ctrl + Enter para enviar</span>
+
+                          {/* Adjuntar imagen */}
+                          <label style={{
                             display: "flex", alignItems: "center", gap: 4,
                             cursor: "pointer", fontSize: 12, color: "#5b8dee",
                             padding: "4px 8px", borderRadius: 6,
@@ -612,8 +308,11 @@ export function TicketDetail({ ticket, onClose, users = [], areas = [], currentU
                                 const reader = new FileReader();
                                 reader.onload = ev => {
                                   const result = ev.target.result;
-                                  const base64 = result.split(",")[1];
-                                  setImagenBot({ base64, mime: file.type, preview: result });
+                                  setImagenBot({
+                                    base64: result.split(",")[1],
+                                    mime: file.type,
+                                    preview: result
+                                  });
                                 };
                                 reader.readAsDataURL(file);
                                 e.target.value = "";
@@ -621,16 +320,14 @@ export function TicketDetail({ ticket, onClose, users = [], areas = [], currentU
                             />
                           </label>
                         </div>
+
                         <button
                           onClick={enviarComentario}
                           disabled={(!comentario.trim() && !imagenBot) || enviando || esperandoBot}
                           style={{
-                            background: "#5b8dee",
-                            color: "white",
-                            border: "none",
-                            borderRadius: 6,
-                            padding: "8px 16px",
-                            fontSize: 13,
+                            background: "#5b8dee", color: "white",
+                            border: "none", borderRadius: 6,
+                            padding: "8px 16px", fontSize: 13,
                             cursor: "pointer",
                             opacity: ((!comentario.trim() && !imagenBot) || enviando || esperandoBot) ? 0.6 : 1
                           }}
@@ -645,8 +342,8 @@ export function TicketDetail({ ticket, onClose, users = [], areas = [], currentU
             </>
           )}
 
-          {tab === "adjuntos" && <TabAdjuntos ticket={ticket} />}
-          {tab === "historial" && <TabHistorial ticket={ticket} users={users} />}
+          {tab === "adjuntos"  && <TicketDetailAdjuntos ticket={ticket} />}
+          {tab === "historial" && <TicketDetailHistorial ticket={ticket} users={users} />}
         </div>
       </div>
     </div>
