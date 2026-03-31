@@ -5,7 +5,7 @@ import { getPrioridad, fmtDate } from "../../utils/helpers";
 import { supabase } from "../../lib/supabase";
 import { TicketDetailHistorial } from "./TicketDetailHistorial";
 import { TicketDetailAdjuntos } from "./TicketDetailAdjuntos";
-import { useTicketDetailBot } from "./TicketDetailBot";
+import { useTicketDetailBot } from "./TicketdetailBot";
 
 const TABS = [
   { id: "detalles", label: "Detalles", icon: "file-text" },
