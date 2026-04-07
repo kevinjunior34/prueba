@@ -10,8 +10,8 @@ import { botHospital } from "../../lib/botHospital";
  * @param {function} toast       - Función de notificaciones
  */
 export function useTicketDetailBot({ ticket, currentUser, onUpdate, toast }) {
-  const [botSession, setBotSession] = useState(null);
-  const [esperandoBot, setEsperandoBot] = useState(false);
+  const [botSession,    setBotSession]    = useState(null);
+  const [esperandoBot,  setEsperandoBot]  = useState(false);
 
   const iniciarBot = async () => {
     setEsperandoBot(true);
@@ -25,12 +25,15 @@ export function useTicketDetailBot({ ticket, currentUser, onUpdate, toast }) {
 
       const mensajeInicial = await session.iniciar();
 
-      const nuevoHistorial = [...(ticket.historial ?? []), {
-        id_historial: Date.now(),
-        id_usuario: null,
-        comentario: mensajeInicial,
-        fecha: new Date().toISOString()
-      }];
+      const nuevoHistorial = [
+        ...(ticket.historial ?? []),
+        {
+          id_historial: Date.now(),
+          id_usuario:   null,
+          comentario:   mensajeInicial,
+          fecha:        new Date().toISOString(),
+        },
+      ];
 
       onUpdate?.({ ...ticket, historial: nuevoHistorial });
     } catch (error) {
@@ -47,9 +50,9 @@ export function useTicketDetailBot({ ticket, currentUser, onUpdate, toast }) {
       // 1. Agregar mensaje del usuario al historial
       const mensajeUsuarioObj = {
         id_historial: Date.now(),
-        id_usuario: currentUser.id_usuario,
-        comentario: mensajeUsuario || "📎 [Imagen adjunta]",
-        fecha: new Date().toISOString()
+        id_usuario:   currentUser.id_usuario,
+        comentario:   mensajeUsuario || "📎 [Imagen adjunta]",
+        fecha:        new Date().toISOString(),
       };
       const historialConUsuario = [...historialActual, mensajeUsuarioObj];
       onUpdate?.({ ...ticket, historial: historialConUsuario });
@@ -58,22 +61,22 @@ export function useTicketDetailBot({ ticket, currentUser, onUpdate, toast }) {
       const respuestaBot = await botSession.procesarMensaje(
         mensajeUsuario,
         imagenBot?.base64 ?? null,
-        imagenBot?.mime ?? "image/jpeg"
+        imagenBot?.mime   ?? "image/jpeg"
       );
 
       // 3. Agregar respuesta del bot al historial
       const respuestaBotObj = {
         id_historial: Date.now() + 1,
-        id_usuario: null,
-        comentario: respuestaBot,
-        fecha: new Date().toISOString()
+        id_usuario:   null,
+        comentario:   respuestaBot,
+        fecha:        new Date().toISOString(),
       };
       onUpdate?.({ ...ticket, historial: [...historialConUsuario, respuestaBotObj] });
 
       // 4. Verificar si el bot terminó
       const estadoBot = botSession.getEstado();
       if (!estadoBot.activo) {
-        if (estadoBot.resuelto) toast?.("✅ Problema resuelto por el asistente", "success");
+        if (estadoBot.resuelto)  toast?.("✅ Problema resuelto por el asistente", "success");
         else if (estadoBot.escalado) toast?.("👨‍🔧 Se ha asignado un técnico", "info");
       }
     } catch (error) {
@@ -90,6 +93,6 @@ export function useTicketDetailBot({ ticket, currentUser, onUpdate, toast }) {
     iniciarBot,
     responderBot,
     botActivo: botSession?.estaActivo() ?? false,
-    intentos: botSession?.intentos ?? 0,
+    intentos:  botSession?.intentos    ?? 0,
   };
 }
