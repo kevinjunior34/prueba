@@ -3,7 +3,7 @@ import { Ic } from "../common/Ic";
 import { Badge } from "../common/Badge";
 import { getPrioridad, fmtDate } from "../../utils/helpers";
 import { supabase } from "../../lib/supabase";
-import { TicketDetailHistorial } from "./TicketDetailHistorial";
+import { TicketDetailHistorial } from "./TicketHistorial";
 import { TicketDetailAdjuntos } from "./TicketDetailAdjuntos";
 import { useTicketDetailBot } from "./TicketDetailBot";
 
