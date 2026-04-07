@@ -4,6 +4,7 @@ import { Badge } from "../common/Badge";
 import { Ic } from "../common/Ic";
 import { getPrioridad, fmtDate } from "../../utils/helpers";
 import { supabase } from "../../lib/supabase";
+import TicketDetalleModal from "./TicketDetalleModal";
 
 // ─── Tab: Adjuntos ─────────────────────────────────────────
 function TabAdjuntos({ ticket }) {
