@@ -2,55 +2,100 @@ import { useState } from "react";
 import TabAdjuntos from "./TabAdjuntos";
 import TabHistorial from "./TabHistorial";
 
-export default function TicketDetalleModal({ ticket: initialTicket, user, onClose, onCambiarEstado }) {
-  const [tab, setTab] = useState("historial");
-  const [ticket, setTicket] = useState(initialTicket);
+export default function TicketDetalleModal({ ticket, user, onClose, onCambiarEstado }) {
+  const [tab, setTab] = useState("detalles");
 
   return (
     <div className="hd-overlay">
       <div className="hd-modal">
 
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
-          <h2>{ticket.titulo}</h2>
-          <button onClick={onClose}>❌</button>
+        {/* HEADER */}
+        <div className="hd-modal__header">
+          <div>
+            <div className="hd-modal__id">TICKET #{ticket.id_ticket}</div>
+            <div className="hd-modal__title">{ticket.titulo}</div>
+            <div className="hd-modal__meta">
+              <span className="hd-badge cerrado">Cerrado</span>
+            </div>
+          </div>
+
+          <button className="hd-modal__close" onClick={onClose}>
+            ✕
+          </button>
         </div>
 
-        <p>{ticket.descripcion}</p>
+        {/* BODY */}
+        <div className="hd-modal__body">
 
-        <div>
-          <button onClick={() => setTab("historial")}>Historial</button>
-          <button onClick={() => setTab("adjuntos")}>Adjuntos</button>
-        </div>
+          {/* TABS */}
+          <div style={{ marginBottom: 15 }}>
+            <button
+              className={`hd-tab ${tab === "detalles" ? "active" : ""}`}
+              onClick={() => setTab("detalles")}
+            >
+              Detalles
+            </button>
 
-        <div style={{ marginTop: 10 }}>
+            <button
+              className={`hd-tab ${tab === "adjuntos" ? "active" : ""}`}
+              onClick={() => setTab("adjuntos")}
+            >
+              Adjuntos
+            </button>
+
+            <button
+              className={`hd-tab ${tab === "historial" ? "active" : ""}`}
+              onClick={() => setTab("historial")}
+            >
+              Historial
+            </button>
+          </div>
+
+          {/* CONTENIDO */}
+          {tab === "detalles" && (
+            <>
+              <div className="hd-info-grid">
+                <div className="hd-field-row">
+                  <div className="hd-field-row__label">Usuario</div>
+                  <div className="hd-field-row__value">{ticket.usuario}</div>
+                </div>
+
+                <div className="hd-field-row">
+                  <div className="hd-field-row__label">Área</div>
+                  <div className="hd-field-row__value">{ticket.area}</div>
+                </div>
+              </div>
+
+              <div className="hd-section-lbl">Descripción</div>
+              <div className="hd-desc-box">{ticket.descripcion}</div>
+
+              {ticket.id_estado === 3 && (
+                <div className="hd-closed-box">
+                  ✅ Ticket cerrado
+                </div>
+              )}
+
+              {ticket.id_estado !== 3 && (
+                <button
+                  className="hd-btn-primary"
+                  onClick={() => onCambiarEstado(ticket, 3)}
+                >
+                  Cerrar Ticket
+                </button>
+              )}
+            </>
+          )}
+
+          {tab === "adjuntos" && <TabAdjuntos ticket={ticket} />}
+
           {tab === "historial" && (
             <TabHistorial
               ticket={ticket}
               user={user}
-              onComentarioEnviado={(nuevo) => {
-                setTicket(prev => ({
-                  ...prev,
-                  historial: [...(prev.historial || []), nuevo]
-                }));
-              }}
+              onComentarioEnviado={() => {}}
             />
           )}
-
-          {tab === "adjuntos" && (
-            <TabAdjuntos ticket={ticket} />
-          )}
         </div>
-
-        <div style={{ marginTop: 20 }}>
-          <button onClick={() => onCambiarEstado(ticket, 2, setTicket)}>
-            En proceso
-          </button>
-
-          <button onClick={() => onCambiarEstado(ticket, 3, setTicket)}>
-            Cerrar
-          </button>
-        </div>
-
       </div>
     </div>
   );
