@@ -4,8 +4,8 @@ import { Badge } from "../common/Badge";
 import { getPrioridad, fmtDate } from "../../utils/helpers";
 import { supabase } from "../../lib/supabase";
 import { TicketDetailHistorial } from "./TicketHistorial";
-import { TicketDetailAdjuntos } from "./TicketDetailAdjuntos";
-import { useTicketDetailBot } from "./TicketDetailBot";
+import { TicketDetailAdjuntos } from "./TicketAdjuntos";
+import { useTicketDetailBot } from "./TicketBot";
 
 const TABS = [
   { id: "detalles",  label: "Detalles",  icon: "file-text" },
