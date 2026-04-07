@@ -147,24 +147,6 @@ function TabHistorial({ ticket, user, onComentarioEnviado }) {
     </div>
   );
 }
-
-// ─── Modal ────────────────────────────────────────────────
-function TicketDetalleModal({ ticket: initialTicket, user, areas, onClose, onCambiarEstado }) {
-  const [ticket, setTicket] = useState(initialTicket);
-
-  return (
-    <div className="hd-overlay">
-      <div className="hd-modal">
-        <h3>{ticket.titulo}</h3>
-
-        <button onClick={() => onCambiarEstado(ticket, 3, setTicket)}>
-          ✅ Cerrar Ticket
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ─── PANEL TECNICO ─────────────────────────────────────────
 export function TecnicoPanel({ user, tickets, setTickets, areas, toast }) {
   const [sel, setSel] = useState(null);
