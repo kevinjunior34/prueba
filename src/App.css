@@ -1139,3 +1139,37 @@ body {
   color: #6b7280;
   border: 1px solid #d1d5db;
 }
+/* MODAL HELP DESK */
+
+.hd-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.hd-modal {
+  background: #fff;
+  padding: 20px;
+  width: 600px;
+  max-width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+.hd-modal button {
+  margin-right: 10px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.hd-modal button:hover {
+  opacity: 0.85;
+}
